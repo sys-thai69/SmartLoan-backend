@@ -1,0 +1,53 @@
+spring:
+  application:
+    name: WingLoan
+
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
+
+  # PostgreSQL (Supabase)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:db.wxjvohtdhacqqqyrlvra.supabase.co}:${DB_PORT:5432}/${DB_NAME:postgres}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+server:
+  port: 8080
+
+jwt:
+  secret: WingLoan2024SecureSecretKey_VeryLongSecretForHS512Algorithm_AtLeast64BytesRequired!
+  expiration: 86400000
+
+cors:
+  allowed-origins: http://localhost:3000,http://localhost:3001
+
+anthropic:
+  api:
+    key: ${ANTHROPIC_API_KEY:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    com.smartloan: DEBUG

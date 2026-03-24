@@ -1,0 +1,41 @@
+# Application
+spring.application.name=SmartLoan
+
+# Server
+server.port=8080
+
+# PostgreSQL (Supabase)
+spring.datasource.url=jdbc:postgresql://db.wxjvohtdhacqqqyrlvra.supabase.co:5432/postgres?sslmode=require
+spring.datasource.username=postgres
+spring.datasource.password=${DB_PASSWORD:##Thai398552}
+spring.datasource.driver-class-name=org.postgresql.Driver
+
+# Connection pool
+spring.datasource.hikari.maximum-pool-size=5
+spring.datasource.hikari.minimum-idle=2
+spring.datasource.hikari.connection-timeout=30000
+
+# JPA / Hibernate
+spring.jpa.hibernate.ddl-auto=update
+spring.jpa.show-sql=true
+spring.jpa.properties.hibernate.dialect=org.hibernate.dialect.PostgreSQLDialect
+spring.jpa.properties.hibernate.format_sql=true
+
+# JWT Configuration - must be at least 64 bytes for HS512
+jwt.secret=SmartLoan2024SecureSecretKey_VeryLongSecretForHS512Algorithm_AtLeast64BytesRequired!
+jwt.expiration=86400000
+
+# CORS
+cors.allowed-origins=http://localhost:3000,http://localhost:3001
+
+# Anthropic API (for natural language loan parsing)
+anthropic.api.key=${ANTHROPIC_API_KEY:}
+
+# Logging (enable for debugging)
+logging.level.org.springframework.security=DEBUG
+logging.level.com.smartloan=DEBUG
+logging.level.org.hibernate.SQL=DEBUG
+
+# Actuator
+management.endpoints.web.exposure.include=health,info
+management.endpoint.health.show-details=always
