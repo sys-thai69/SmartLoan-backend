@@ -6,6 +6,9 @@ WORKDIR /app
 COPY .mvn/ .mvn/
 COPY mvnw pom.xml ./
 
+# Make mvnw executable
+RUN chmod +x mvnw
+
 # Download dependencies
 RUN ./mvnw dependency:go-offline -B
 
@@ -26,12 +29,8 @@ USER spring:spring
 # Copy the built jar
 COPY --from=build /app/target/*.jar app.jar
 
-# Expose port
+# Expose port (Render uses PORT env var)
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
-
-# Run the application
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Run the application with Render's PORT
+ENTRYPOINT ["sh", "-c", "java -jar -Dserver.port=${PORT:-8080} app.jar"]
