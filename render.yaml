@@ -1,9 +1,9 @@
-# Render Blueprint - WingLoan Backend
+# Render Blueprint - SmartLoan Backend
 # https://render.com/docs/blueprint-spec
 
 services:
   - type: web
-    name: wingloan-backend
+    name: smartloan-backend
     runtime: docker
     region: singapore  # Closest to your Supabase (ap-southeast-1)
     plan: free  # Or starter, standard, etc.

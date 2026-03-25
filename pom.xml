@@ -9,11 +9,11 @@
 		<relativePath/>
 	</parent>
 
-	<groupId>com.wingloan</groupId>
-	<artifactId>wingloan-backend</artifactId>
+	<groupId>com.smartloan</groupId>
+	<artifactId>smartloan-backend</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
-	<name>WingLoan</name>
-	<description>WingLoan - Peer-to-Peer Informal Loan Tracker</description>
+	<name>SmartLoan</name>
+	<description>SmartLoan - Peer-to-Peer Informal Loan Tracker</description>
 
 	<properties>
 		<java.version>21</java.version>

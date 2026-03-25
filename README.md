@@ -1,6 +1,6 @@
-# WingLoan Backend
+# SmartLoan Backend
 
-Spring Boot backend for WingLoan - Peer-to-Peer Informal Loan Tracker.
+Spring Boot backend for SmartLoan - Peer-to-Peer Informal Loan Tracker.
 
 ## Requirements
 
@@ -28,13 +28,13 @@ powershell -ExecutionPolicy Bypass -File run.ps1
 ### Option 3: Using Docker
 
 ```bash
-docker build -t wingloan-backend .
+docker build -t smartloan-backend .
 docker run -p 8080:8080 \
   -e DB_URL="your_db_url" \
   -e DB_USERNAME="your_username" \
   -e DB_PASSWORD="your_password" \
   -e JWT_SECRET="your_jwt_secret" \
-  wingloan-backend
+  smartloan-backend
 ```
 
 ## Environment Variables
@@ -60,7 +60,7 @@ Make sure your code is pushed to GitHub.
 2. Click **New +** → **Web Service**
 3. Connect your GitHub repository (`SmartLoan-backend`)
 4. Configure:
-   - **Name**: `wingloan-backend`
+   - **Name**: `smartloan-backend`
    - **Region**: Singapore (closest to Supabase)
    - **Runtime**: Docker
    - **Plan**: Free (or Starter for better performance)
@@ -69,7 +69,7 @@ Make sure your code is pushed to GitHub.
 In Render dashboard, add these environment variables:
 
 ```
-JWT_SECRET=WingLoan2024SecureSecretKey_VeryLongSecretForHS512Algorithm_AtLeast64BytesRequired!
+JWT_SECRET=SmartLoan2024SecureSecretKey_VeryLongSecretForHS512Algorithm_AtLeast64BytesRequired!
 DB_URL=jdbc:postgresql://aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?prepareThreshold=0
 DB_USERNAME=postgres.wxjvohtdhacqqqyrlvra
 DB_PASSWORD=your_password_here
@@ -78,7 +78,7 @@ DB_PASSWORD=your_password_here
 ### Step 4: Deploy
 Click **Create Web Service** and wait for deployment.
 
-Your API will be available at: `https://wingloan-backend.onrender.com`
+Your API will be available at: `https://smartloan-backend.onrender.com`
 
 ## API Endpoints
 

@@ -17,7 +17,7 @@ $mavenBin = Join-Path $env:TEMP "maven\bin"
 $env:Path = "$mavenBin;$env:Path"
 
 Write-Host ""
-Write-Host "Starting WingLoan Backend..."
+Write-Host "Starting SmartLoan Backend..."
 Write-Host "Maven: $mavenBin"
 Write-Host ""
 
