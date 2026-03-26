@@ -31,7 +31,11 @@ public class User implements UserDetails {
     @Column(unique = true)
     private String phoneNumber;
 
-    @Column(nullable = false)
+    // Firebase UID - links to Firebase Authentication
+    @Column(unique = true)
+    private String firebaseUid;
+
+    // Password is nullable for Firebase-only users (Google sign-in, phone auth)
     private String password;
 
     @Enumerated(EnumType.STRING)
