@@ -1,12 +1,14 @@
 package com.smartloan.service;
 
 import com.smartloan.dto.*;
+import com.smartloan.entity.OtpType;
 import com.smartloan.entity.User;
 import com.smartloan.entity.Wallet;
+import com.smartloan.repository.OtpRepository;
 import com.smartloan.repository.UserRepository;
 import com.smartloan.repository.WalletRepository;
 import com.smartloan.security.JwtUtil;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -19,10 +21,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
+@Slf4j
 public class AuthService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
+    private final OtpRepository otpRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
@@ -30,11 +34,13 @@ public class AuthService implements UserDetailsService {
     public AuthService(
             UserRepository userRepository,
             WalletRepository walletRepository,
+            OtpRepository otpRepository,
             @Lazy PasswordEncoder passwordEncoder,
             JwtUtil jwtUtil,
             @Lazy AuthenticationManager authenticationManager) {
         this.userRepository = userRepository;
         this.walletRepository = walletRepository;
+        this.otpRepository = otpRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.authenticationManager = authenticationManager;
@@ -46,6 +52,14 @@ public class AuthService implements UserDetailsService {
                 .orElseThrow(() -> new UsernameNotFoundException("User not found with email: " + username));
     }
 
+    public boolean emailExists(String email) {
+        return userRepository.existsByEmail(email);
+    }
+
+    public boolean phoneExists(String phoneNumber) {
+        return userRepository.existsByPhoneNumber(phoneNumber);
+    }
+
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         // Check if email already exists
@@ -53,11 +67,31 @@ public class AuthService implements UserDetailsService {
             throw new RuntimeException("Email already registered");
         }
 
-        // Create user
+        // Check if phone already exists
+        if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+            throw new RuntimeException("Phone number already registered");
+        }
+
+        // Verify email OTP
+        boolean emailVerified = verifyOtp(request.getEmail(), OtpType.EMAIL, request.getEmailOtp());
+        if (!emailVerified) {
+            throw new RuntimeException("Invalid or expired email verification code");
+        }
+
+        // Verify SMS OTP
+        boolean phoneVerified = verifyOtp(request.getPhoneNumber(), OtpType.SMS, request.getSmsOtp());
+        if (!phoneVerified) {
+            throw new RuntimeException("Invalid or expired SMS verification code");
+        }
+
+        // Create user with verified email and phone
         User user = User.builder()
                 .name(request.getName())
                 .email(request.getEmail())
+                .phoneNumber(request.getPhoneNumber())
                 .password(passwordEncoder.encode(request.getPassword()))
+                .emailVerified(true)
+                .phoneVerified(true)
                 .build();
 
         user = userRepository.save(user);
@@ -75,6 +109,22 @@ public class AuthService implements UserDetailsService {
                 .user(toUserDTO(user))
                 .token(token)
                 .build();
+    }
+
+    private boolean verifyOtp(String target, OtpType type, String code) {
+        return otpRepository.findFirstByTargetAndTypeAndUsedFalseOrderByCreatedAtDesc(target, type)
+                .map(otp -> {
+                    if (!otp.isValid()) {
+                        return false;
+                    }
+                    if (otp.getCode().equals(code)) {
+                        otp.setUsed(true);
+                        otpRepository.save(otp);
+                        return true;
+                    }
+                    return false;
+                })
+                .orElse(false);
     }
 
     public AuthResponse login(LoginRequest request) {
@@ -106,8 +156,11 @@ public class AuthService implements UserDetailsService {
                 .id(user.getId())
                 .name(user.getName())
                 .email(user.getEmail())
+                .phoneNumber(user.getPhoneNumber())
                 .role(user.getRole())
                 .trustScore(user.getTrustScore())
+                .emailVerified(user.getEmailVerified())
+                .phoneVerified(user.getPhoneVerified())
                 .createdAt(user.getCreatedAt().toString())
                 .build();
     }

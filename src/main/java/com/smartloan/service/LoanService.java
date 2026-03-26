@@ -10,7 +10,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -131,10 +133,52 @@ public class LoanService {
     }
 
     public List<LoanDTO> getMyLoans(User user) {
-        return loanRepository.findAllByUserId(user.getId())
+        List<Loan> loans = loanRepository.findAllByUserId(user.getId());
+        if (loans.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        List<String> loanIds = loans.stream().map(Loan::getId).collect(Collectors.toList());
+
+        // Batch fetch schedules and payments (only 2 queries instead of 2N)
+        Map<String, List<RepaymentSchedule>> schedulesByLoanId = scheduleRepository
+                .findByLoanIdInOrderByInstallmentNo(loanIds)
                 .stream()
-                .map(this::toLoanDTO)
+                .collect(Collectors.groupingBy(RepaymentSchedule::getLoanId));
+
+        Map<String, List<Payment>> paymentsByLoanId = paymentRepository
+                .findByLoanIdInOrderByPaymentDateDesc(loanIds)
+                .stream()
+                .collect(Collectors.groupingBy(Payment::getLoanId));
+
+        return loans.stream()
+                .map(loan -> toLoanDTOWithPreloadedData(loan,
+                        schedulesByLoanId.getOrDefault(loan.getId(), Collections.emptyList()),
+                        paymentsByLoanId.getOrDefault(loan.getId(), Collections.emptyList())))
                 .collect(Collectors.toList());
+    }
+
+    private LoanDTO toLoanDTOWithPreloadedData(Loan loan, List<RepaymentSchedule> schedules, List<Payment> payments) {
+        return LoanDTO.builder()
+                .id(loan.getId())
+                .lenderId(loan.getLenderId())
+                .borrowerId(loan.getBorrowerId())
+                .lender(loan.getLender() != null ? authService.toUserDTO(loan.getLender()) : null)
+                .borrower(loan.getBorrower() != null ? authService.toUserDTO(loan.getBorrower()) : null)
+                .principal(loan.getPrincipal())
+                .interestRate(loan.getInterestRate())
+                .totalAmount(loan.getTotalAmount())
+                .installments(loan.getInstallments())
+                .frequency(loan.getFrequency())
+                .startDate(loan.getStartDate().toString())
+                .status(loan.getStatus())
+                .autoDebit(loan.getAutoDebit())
+                .isQuickLend(loan.getIsQuickLend())
+                .templateId(loan.getTemplateId())
+                .createdAt(loan.getCreatedAt().toString())
+                .schedule(schedules.stream().map(this::toScheduleDTO).collect(Collectors.toList()))
+                .payments(payments.stream().map(this::toPaymentDTO).collect(Collectors.toList()))
+                .build();
     }
 
     public LoanWithBalanceDTO getLoanById(String id, User user) {

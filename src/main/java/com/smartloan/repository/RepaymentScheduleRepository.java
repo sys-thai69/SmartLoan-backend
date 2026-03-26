@@ -13,6 +13,10 @@ public interface RepaymentScheduleRepository extends JpaRepository<RepaymentSche
 
     List<RepaymentSchedule> findByLoanIdOrderByInstallmentNo(String loanId);
 
+    // Batch fetch schedules for multiple loans
+    @Query("SELECT rs FROM RepaymentSchedule rs WHERE rs.loanId IN :loanIds ORDER BY rs.loanId, rs.installmentNo")
+    List<RepaymentSchedule> findByLoanIdInOrderByInstallmentNo(List<String> loanIds);
+
     @Query("SELECT rs FROM RepaymentSchedule rs JOIN rs.loan l WHERE (l.lenderId = :userId OR l.borrowerId = :userId) AND rs.isPaid = false AND rs.dueDate < :today")
     List<RepaymentSchedule> findOverdueByUserId(String userId, LocalDate today);
 }

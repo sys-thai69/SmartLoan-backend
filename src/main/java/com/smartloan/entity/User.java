@@ -28,6 +28,9 @@ public class User implements UserDetails {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(unique = true)
+    private String phoneNumber;
+
     @Column(nullable = false)
     private String password;
 
@@ -39,6 +42,14 @@ public class User implements UserDetails {
     @Column(nullable = false)
     @Builder.Default
     private Double trustScore = 100.0;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean emailVerified = false;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private Boolean phoneVerified = false;
 
     @Column(nullable = false)
     @Builder.Default

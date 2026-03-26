@@ -14,8 +14,11 @@ public interface LoanRepository extends JpaRepository<Loan, String> {
 
     List<Loan> findByLenderIdOrBorrowerId(String lenderId, String borrowerId);
 
-    @Query("SELECT l FROM Loan l WHERE l.lenderId = :userId OR l.borrowerId = :userId")
+    @Query("SELECT l FROM Loan l LEFT JOIN FETCH l.lender LEFT JOIN FETCH l.borrower WHERE l.lenderId = :userId OR l.borrowerId = :userId")
     List<Loan> findAllByUserId(@Param("userId") String userId);
+
+    @Query("SELECT l FROM Loan l LEFT JOIN FETCH l.lender LEFT JOIN FETCH l.borrower WHERE l.id = :id")
+    java.util.Optional<Loan> findByIdWithUsers(@Param("id") String id);
 
     List<Loan> findByStatus(LoanStatus status);
 
@@ -29,4 +32,12 @@ public interface LoanRepository extends JpaRepository<Loan, String> {
 
     @Query("SELECT SUM(l.principal) FROM Loan l")
     Double getTotalVolume();
+
+    // Optimized query for admin - get all user stats in one query
+    @Query("SELECT u.id, " +
+           "COUNT(CASE WHEN l.lenderId = u.id THEN 1 END), " +
+           "COUNT(CASE WHEN l.borrowerId = u.id THEN 1 END) " +
+           "FROM User u LEFT JOIN Loan l ON l.lenderId = u.id OR l.borrowerId = u.id " +
+           "GROUP BY u.id")
+    List<Object[]> getUserLoanStats();
 }

@@ -26,11 +26,11 @@ public class Loan {
     @Column(nullable = false)
     private String borrowerId;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "lenderId", insertable = false, updatable = false)
     private User lender;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "borrowerId", insertable = false, updatable = false)
     private User borrower;
 

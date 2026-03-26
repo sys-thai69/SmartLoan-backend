@@ -14,7 +14,10 @@ public class UserDTO {
     private String id;
     private String name;
     private String email;
+    private String phoneNumber;
     private UserRole role;
     private Double trustScore;
+    private Boolean emailVerified;
+    private Boolean phoneVerified;
     private String createdAt;
 }
