@@ -55,7 +55,7 @@ public class HealthController {
                 dbStatus.put("status", "UP");
                 dbStatus.put("message", "Database connection successful");
                 dbStatus.put("databaseProductName", conn.getMetaData().getDatabaseProductName());
-                dbStatus.put("databaseVersion", conn.getMetaData().getDatabaseVersion());
+                dbStatus.put("databaseVersion", conn.getMetaData().getDatabaseMajorVersion() + "." + conn.getMetaData().getDatabaseMinorVersion());
                 conn.close();
             } else {
                 dbStatus.put("status", "DOWN");
