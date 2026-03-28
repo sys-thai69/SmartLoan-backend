@@ -35,8 +35,15 @@ public class SecurityConfig {
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
+                // Public endpoints for testing & health check
                 .requestMatchers("/actuator/**").permitAll()
+                .requestMatchers("/api/health/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/send-email-otp").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/send-sms-otp").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/verify-otp").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Admin endpoints
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
