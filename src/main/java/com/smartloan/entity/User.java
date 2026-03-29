@@ -51,7 +51,7 @@ public class User implements UserDetails {
     @Builder.Default
     private Boolean emailVerified = false;
 
-    @Column(nullable = false)
+    // Nullable while OTP feature is paused
     @Builder.Default
     private Boolean phoneVerified = false;
 
