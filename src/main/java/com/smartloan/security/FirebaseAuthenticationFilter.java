@@ -5,7 +5,9 @@ import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
 import com.smartloan.entity.User;
 import com.smartloan.entity.UserRole;
+import com.smartloan.entity.Wallet;
 import com.smartloan.repository.UserRepository;
+import com.smartloan.repository.WalletRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -27,6 +29,7 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final FirebaseAuth firebaseAuth;
     private final UserRepository userRepository;
+    private final WalletRepository walletRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -112,6 +115,13 @@ public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
                 .build();
 
         user = userRepository.save(user);
+
+        // Create wallet for new user
+        Wallet wallet = Wallet.builder()
+                .userId(user.getId())
+                .build();
+        walletRepository.save(wallet);
+
         log.info("Created new user from Firebase: {}", user.getEmail());
 
         return user;
