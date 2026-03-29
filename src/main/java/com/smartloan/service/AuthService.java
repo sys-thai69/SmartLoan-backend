@@ -1,10 +1,8 @@
 package com.smartloan.service;
 
 import com.smartloan.dto.*;
-import com.smartloan.entity.OtpType;
 import com.smartloan.entity.User;
 import com.smartloan.entity.Wallet;
-import com.smartloan.repository.OtpRepository;
 import com.smartloan.repository.UserRepository;
 import com.smartloan.repository.WalletRepository;
 import com.smartloan.security.JwtUtil;
@@ -20,13 +18,18 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+/**
+ * Authentication service for SmartLoan.
+ * 
+ * Note: Primary authentication is handled by Firebase via FirebaseAuthenticationFilter.
+ * This service provides fallback email/password auth and user management utilities.
+ */
 @Service
 @Slf4j
 public class AuthService implements UserDetailsService {
 
     private final UserRepository userRepository;
     private final WalletRepository walletRepository;
-    private final OtpRepository otpRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
     private final AuthenticationManager authenticationManager;
@@ -34,13 +37,11 @@ public class AuthService implements UserDetailsService {
     public AuthService(
             UserRepository userRepository,
             WalletRepository walletRepository,
-            OtpRepository otpRepository,
             @Lazy PasswordEncoder passwordEncoder,
             JwtUtil jwtUtil,
             @Lazy AuthenticationManager authenticationManager) {
         this.userRepository = userRepository;
         this.walletRepository = walletRepository;
-        this.otpRepository = otpRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
         this.authenticationManager = authenticationManager;
@@ -60,6 +61,10 @@ public class AuthService implements UserDetailsService {
         return userRepository.existsByPhoneNumber(phoneNumber);
     }
 
+    /**
+     * Register a new user with email/password (fallback for non-Firebase auth).
+     * Note: Most users are auto-created via FirebaseAuthenticationFilter when they first authenticate.
+     */
     @Transactional
     public AuthResponse register(RegisterRequest request) {
         // Check if email already exists
@@ -67,31 +72,20 @@ public class AuthService implements UserDetailsService {
             throw new RuntimeException("Email already registered");
         }
 
-        // Check if phone already exists
-        if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
+        // Check if phone already exists (if provided)
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isEmpty()
+                && userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
             throw new RuntimeException("Phone number already registered");
         }
 
-        // Verify email OTP
-        boolean emailVerified = verifyOtp(request.getEmail(), OtpType.EMAIL, request.getEmailOtp());
-        if (!emailVerified) {
-            throw new RuntimeException("Invalid or expired email verification code");
-        }
-
-        // Verify SMS OTP
-        boolean phoneVerified = verifyOtp(request.getPhoneNumber(), OtpType.SMS, request.getSmsOtp());
-        if (!phoneVerified) {
-            throw new RuntimeException("Invalid or expired SMS verification code");
-        }
-
-        // Create user with verified email and phone
+        // Create user
         User user = User.builder()
                 .name(request.getName())
                 .email(request.getEmail())
                 .phoneNumber(request.getPhoneNumber())
                 .password(passwordEncoder.encode(request.getPassword()))
-                .emailVerified(true)
-                .phoneVerified(true)
+                .emailVerified(false)
+                .phoneVerified(false)
                 .build();
 
         user = userRepository.save(user);
@@ -109,22 +103,6 @@ public class AuthService implements UserDetailsService {
                 .user(toUserDTO(user))
                 .token(token)
                 .build();
-    }
-
-    private boolean verifyOtp(String target, OtpType type, String code) {
-        return otpRepository.findFirstByTargetAndTypeAndUsedFalseOrderByCreatedAtDesc(target, type)
-                .map(otp -> {
-                    if (!otp.isValid()) {
-                        return false;
-                    }
-                    if (otp.getCode().equals(code)) {
-                        otp.setUsed(true);
-                        otpRepository.save(otp);
-                        return true;
-                    }
-                    return false;
-                })
-                .orElse(false);
     }
 
     public AuthResponse login(LoginRequest request) {
