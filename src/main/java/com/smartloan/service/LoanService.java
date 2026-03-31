@@ -56,7 +56,7 @@ public class LoanService {
         // Create repayment schedule
         createRepaymentSchedule(loan);
 
-        return toLoanDTO(loanRepository.findById(loan.getId()).orElse(loan));
+        return toLoanDTO(loanRepository.findByIdWithUsers(loan.getId()).orElse(loan));
     }
 
     @Transactional
@@ -104,7 +104,7 @@ public class LoanService {
         // Create repayment schedule
         createRepaymentSchedule(loan);
 
-        return toLoanDTO(loanRepository.findById(loan.getId()).orElse(loan));
+        return toLoanDTO(loanRepository.findByIdWithUsers(loan.getId()).orElse(loan));
     }
 
     private void createRepaymentSchedule(Loan loan) {
@@ -182,7 +182,7 @@ public class LoanService {
     }
 
     public LoanWithBalanceDTO getLoanById(String id, User user) {
-        Loan loan = loanRepository.findById(id)
+        Loan loan = loanRepository.findByIdWithUsers(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         // Check access
@@ -208,7 +208,7 @@ public class LoanService {
 
     @Transactional
     public LoanDTO acceptLoan(String id, User user) {
-        Loan loan = loanRepository.findById(id)
+        Loan loan = loanRepository.findByIdWithUsers(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         if (!loan.getBorrowerId().equals(user.getId())) {
@@ -225,7 +225,7 @@ public class LoanService {
 
     @Transactional
     public LoanDTO declineLoan(String id, User user) {
-        Loan loan = loanRepository.findById(id)
+        Loan loan = loanRepository.findByIdWithUsers(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         if (!loan.getBorrowerId().equals(user.getId())) {
@@ -242,7 +242,7 @@ public class LoanService {
 
     @Transactional
     public LoanDTO updateStatus(String id, String newStatus, User user) {
-        Loan loan = loanRepository.findById(id)
+        Loan loan = loanRepository.findByIdWithUsers(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         // Only lender or borrower can update status

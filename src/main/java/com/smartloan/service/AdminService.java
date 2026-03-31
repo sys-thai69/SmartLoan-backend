@@ -69,7 +69,7 @@ public class AdminService {
 
     @Transactional
     public LoanDTO flagLoan(String id, LoanService loanService) {
-        Loan loan = loanRepository.findById(id)
+        Loan loan = loanRepository.findByIdWithUsers(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         // Set status to overdue (flagged)
