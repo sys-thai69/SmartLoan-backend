@@ -22,7 +22,7 @@ public class PaymentService {
 
     @Transactional
     public PaymentDTO logPayment(String loanId, LogPaymentRequest request, User user) {
-        Loan loan = loanRepository.findById(loanId)
+        Loan loan = loanRepository.findByIdWithUsers(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         // Only lender or borrower can log payment
@@ -66,7 +66,7 @@ public class PaymentService {
     }
 
     public List<PaymentDTO> getPayments(String loanId, User user) {
-        Loan loan = loanRepository.findById(loanId)
+        Loan loan = loanRepository.findByIdWithUsers(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         // Only lender or borrower can view payments
@@ -82,7 +82,7 @@ public class PaymentService {
 
     @Transactional
     public void deletePayment(String loanId, String paymentId, User user) {
-        Loan loan = loanRepository.findById(loanId)
+        Loan loan = loanRepository.findByIdWithUsers(loanId)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
 
         // Only lender can delete payments
