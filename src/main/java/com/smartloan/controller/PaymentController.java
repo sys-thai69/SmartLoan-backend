@@ -26,6 +26,22 @@ public class PaymentController {
         return ResponseEntity.ok(paymentService.logPayment(loanId, request, user));
     }
 
+    @PostMapping("/pay")
+    public ResponseEntity<PaymentDTO> makePayment(
+            @PathVariable String loanId,
+            @Valid @RequestBody MakePaymentRequest request,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(paymentService.makePayment(loanId, request, user));
+    }
+
+    @PostMapping("/auto-debit")
+    public ResponseEntity<PaymentDTO> initiateAutoDebit(
+            @PathVariable String loanId,
+            @Valid @RequestBody MakePaymentRequest request,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(paymentService.initiateAutoDebit(loanId, request, user));
+    }
+
     @GetMapping
     public ResponseEntity<List<PaymentDTO>> getPayments(
             @PathVariable String loanId,

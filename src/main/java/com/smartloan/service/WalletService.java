@@ -92,6 +92,39 @@ public class WalletService {
         return toWalletDTO(senderWallet, transactions);
     }
 
+    @Transactional
+    public void payLoan(String borrowerId, String lenderId, String loanId, Double amount) {
+        Wallet borrowerWallet = walletRepository.findByUserId(borrowerId)
+                .orElseThrow(() -> new RuntimeException("Borrower wallet not found"));
+
+        if (borrowerWallet.getBalance() < amount) {
+            throw new RuntimeException("Insufficient wallet balance to make payment");
+        }
+
+        Wallet lenderWallet = walletRepository.findByUserId(lenderId)
+                .orElseThrow(() -> new RuntimeException("Lender wallet not found"));
+
+        // Update balances
+        borrowerWallet.setBalance(borrowerWallet.getBalance() - amount);
+        borrowerWallet.setUpdatedAt(LocalDateTime.now());
+        walletRepository.save(borrowerWallet);
+
+        lenderWallet.setBalance(lenderWallet.getBalance() + amount);
+        lenderWallet.setUpdatedAt(LocalDateTime.now());
+        walletRepository.save(lenderWallet);
+
+        // Create transaction record with loan reference
+        WalletTransaction transaction = WalletTransaction.builder()
+                .fromUser(borrowerId)
+                .toUser(lenderId)
+                .amount(amount)
+                .type(TransactionType.TRANSFER)
+                .loanId(loanId)
+                .note("Loan payment")
+                .build();
+        transactionRepository.save(transaction);
+    }
+
     private WalletDTO toWalletDTO(Wallet wallet, List<WalletTransaction> transactions) {
         return WalletDTO.builder()
                 .id(wallet.getId())
