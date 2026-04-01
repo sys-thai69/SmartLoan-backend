@@ -135,6 +135,7 @@ public class AuthService implements UserDetailsService {
                 .name(user.getName())
                 .email(user.getEmail())
                 .phoneNumber(user.getPhoneNumber())
+                .profilePicture(user.getProfilePicture())
                 .role(user.getRole())
                 .trustScore(user.getTrustScore())
                 .emailVerified(user.getEmailVerified())

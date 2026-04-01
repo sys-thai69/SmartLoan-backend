@@ -19,7 +19,6 @@ public class WalletTransaction {
 
     private String fromUser;
 
-    @Column(nullable = false)
     private String toUser;
 
     @Column(nullable = false)

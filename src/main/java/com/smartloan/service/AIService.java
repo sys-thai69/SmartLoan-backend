@@ -3,6 +3,8 @@ package com.smartloan.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.smartloan.dto.*;
+import com.smartloan.entity.User;
+import com.smartloan.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -10,8 +12,10 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -24,6 +28,7 @@ public class AIService {
     private String anthropicApiKey;
 
     private final ObjectMapper objectMapper;
+    private final UserRepository userRepository;
 
     private static final String ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -53,12 +58,19 @@ public class AIService {
 
         String systemPrompt = """
             You are a loan parser. Parse the user's natural language input into structured loan data.
-            Extract: borrower name/email, amount, duration, interest rate, installments, frequency.
+            Extract: borrower name/email/phone, amount, duration, interest rate, installments, frequency.
+
+            IMPORTANT:
+            - If borrower is identified by NAME, extract the name ONLY (do NOT generate/guess email)
+            - If borrower is identified by EMAIL or PHONE, extract those
+            - Set borrowerEmail and phoneNumber to null if not explicitly provided
+            - Only return actual data found in the input, never generate placeholder values
 
             Respond ONLY with valid JSON in this exact format (no markdown, no explanation):
             {
               "borrowerName": "string or null",
               "borrowerEmail": "string or null",
+              "phoneNumber": "string or null",
               "amount": number or null,
               "duration": "string description or null",
               "interestRate": number (default 0),
@@ -68,8 +80,9 @@ public class AIService {
             }
 
             Examples:
-            - "lend Channy $20, pay back in 2 weeks, no interest" -> {"borrowerName":"Channy","amount":20,"duration":"2 weeks","interestRate":0,"installments":2,"frequency":"weekly","parsed":true}
-            - "give john@email.com 100 dollars monthly for 3 months at 5%" -> {"borrowerEmail":"john@email.com","amount":100,"duration":"3 months","interestRate":5,"installments":3,"frequency":"monthly","parsed":true}
+            - "lend Channy $20, pay back in 2 weeks, no interest" -> {"borrowerName":"Channy","borrowerEmail":null,"phoneNumber":null,"amount":20,"duration":"2 weeks","interestRate":0,"installments":2,"frequency":"weekly","parsed":true}
+            - "give john@email.com 100 dollars monthly for 3 months at 5%" -> {"borrowerEmail":"john@email.com","borrowerName":null,"phoneNumber":null,"amount":100,"duration":"3 months","interestRate":5,"installments":3,"frequency":"monthly","parsed":true}
+            - "lend +855912345678 $50 for 1 week" -> {"borrowerPhone":"+855912345678","borrowerName":null,"borrowerEmail":null,"amount":50,"duration":"1 week","interestRate":0,"installments":1,"frequency":"weekly","parsed":true}
             """;
 
         Map<String, Object> requestBody = Map.of(
@@ -95,11 +108,20 @@ public class AIService {
 
             JsonNode parsed = objectMapper.readTree(content);
 
+            String borrowerName = parsed.has("borrowerName") && !parsed.get("borrowerName").isNull()
+                    ? parsed.get("borrowerName").asText() : null;
+            String borrowerEmail = parsed.has("borrowerEmail") && !parsed.get("borrowerEmail").isNull()
+                    ? parsed.get("borrowerEmail").asText() : null;
+            String phoneNumber = parsed.has("phoneNumber") && !parsed.get("phoneNumber").isNull()
+                    ? parsed.get("phoneNumber").asText() : null;
+
+            // Resolve borrower info from database
+            String resolvedEmail = resolveBorrowerEmail(borrowerName, borrowerEmail, phoneNumber);
+
             return ParseLoanResponse.builder()
-                    .borrowerName(parsed.has("borrowerName") && !parsed.get("borrowerName").isNull()
-                            ? parsed.get("borrowerName").asText() : null)
-                    .borrowerEmail(parsed.has("borrowerEmail") && !parsed.get("borrowerEmail").isNull()
-                            ? parsed.get("borrowerEmail").asText() : null)
+                    .borrowerName(borrowerName)
+                    .borrowerEmail(resolvedEmail != null ? resolvedEmail : borrowerEmail)
+                    .phoneNumber(phoneNumber)
                     .amount(parsed.has("amount") && !parsed.get("amount").isNull()
                             ? parsed.get("amount").asDouble() : null)
                     .duration(parsed.has("duration") && !parsed.get("duration").isNull()
@@ -149,6 +171,17 @@ public class AIService {
             borrowerEmail = emailMatcher.group(1);
         }
 
+        // Parse phone number (basic format: +1234567890 or (123)456-7890 or 123-456-7890)
+        String phoneNumber = null;
+        Pattern phonePattern = Pattern.compile("(?:\\+\\d{1,3})?\\s*(?:\\(?\\d{3}\\)?)?[\\s.-]?\\d{3}[\\s.-]?\\d{4}");
+        Matcher phoneMatcher = phonePattern.matcher(text.replaceAll("[^0-9+\\s().-]", ""));
+        if (phoneMatcher.find()) {
+            phoneNumber = phoneMatcher.group(0).replaceAll("[^0-9+]", "");
+        }
+
+        // Resolve borrower info from database
+        String resolvedEmail = resolveBorrowerEmail(borrowerName, borrowerEmail, phoneNumber);
+
         // Parse duration
         String duration = null;
         Integer installments = null;
@@ -177,11 +210,12 @@ public class AIService {
             }
         }
 
-        boolean parsed = amount != null && (borrowerName != null || borrowerEmail != null);
+        boolean parsed = amount != null && (borrowerName != null || borrowerEmail != null || phoneNumber != null);
 
         return ParseLoanResponse.builder()
                 .borrowerName(borrowerName)
-                .borrowerEmail(borrowerEmail)
+                .borrowerEmail(resolvedEmail != null ? resolvedEmail : borrowerEmail)
+                .phoneNumber(phoneNumber)
                 .amount(amount)
                 .duration(duration)
                 .interestRate(interestRate)
@@ -189,5 +223,95 @@ public class AIService {
                 .frequency(frequency)
                 .parsed(parsed)
                 .build();
+    }
+
+    /**
+     * Search for borrowers by email, phone, or name
+     */
+    public List<User> searchBorrowers(String query) {
+        if (query == null || query.trim().isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        query = query.toLowerCase().trim();
+        List<User> allUsers = userRepository.findAll();
+        List<User> results = new ArrayList<>();
+
+        for (User user : allUsers) {
+            // Email match
+            if (user.getEmail() != null && user.getEmail().toLowerCase().contains(query)) {
+                results.add(user);
+                continue;
+            }
+
+            // Phone match (normalize both)
+            if (user.getPhoneNumber() != null) {
+                String normalizedPhone = user.getPhoneNumber().replaceAll("[^0-9]", "");
+                String normalizedQuery = query.replaceAll("[^0-9]", "");
+                if (normalizedPhone.contains(normalizedQuery) || normalizedQuery.contains(normalizedPhone)) {
+                    results.add(user);
+                    continue;
+                }
+            }
+
+            // Name match
+            if (user.getName() != null && user.getName().toLowerCase().contains(query)) {
+                results.add(user);
+            }
+        }
+
+        return results;
+    }
+
+    /**
+     * Resolve borrower email from database using name, email, or phone number
+     * Priority: email > phone > name
+     */
+    private String resolveBorrowerEmail(String borrowerName, String borrowerEmail, String phoneNumber) {
+        List<User> users = userRepository.findAll();
+
+        // If email provided, verify it exists
+        if (borrowerEmail != null && !borrowerEmail.isEmpty()) {
+            for (User user : users) {
+                if (user.getEmail().equalsIgnoreCase(borrowerEmail)) {
+                    return user.getEmail();
+                }
+            }
+        }
+
+        // If phone provided, search by phone
+        if (phoneNumber != null && !phoneNumber.isEmpty()) {
+            for (User user : users) {
+                if (user.getPhoneNumber() != null && user.getPhoneNumber().replaceAll("[^0-9]", "")
+                        .endsWith(phoneNumber.replaceAll("[^0-9]", ""))) {
+                    return user.getEmail();
+                }
+            }
+        }
+
+        // If name provided, search by name (exact then partial match)
+        if (borrowerName != null && !borrowerName.isEmpty()) {
+            // First try exact match
+            for (User user : users) {
+                if (user.getName() != null && user.getName().equalsIgnoreCase(borrowerName)) {
+                    return user.getEmail();
+                }
+            }
+
+            // Try partial match (first name or last name)
+            String[] nameParts = borrowerName.toLowerCase().split("\\s+");
+            for (User user : users) {
+                if (user.getName() != null) {
+                    String userName = user.getName().toLowerCase();
+                    for (String part : nameParts) {
+                        if (userName.contains(part)) {
+                            return user.getEmail();
+                        }
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 }

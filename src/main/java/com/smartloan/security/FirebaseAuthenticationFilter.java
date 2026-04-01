@@ -22,9 +22,9 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 
-@Component
 @RequiredArgsConstructor
 @Slf4j
+// @Component - Disabled for local JWT auth testing. Use JwtAuthenticationFilter instead.
 public class FirebaseAuthenticationFilter extends OncePerRequestFilter {
 
     private final FirebaseAuth firebaseAuth;

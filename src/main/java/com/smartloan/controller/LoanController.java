@@ -58,12 +58,44 @@ public class LoanController {
         return ResponseEntity.ok(loanService.declineLoan(id, user));
     }
 
+    @PatchMapping("/{id}/cancel")
+    public ResponseEntity<LoanDTO> cancelLoan(
+            @PathVariable String id,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(loanService.cancelLoan(id, user));
+    }
+
     @PatchMapping("/{id}/status")
     public ResponseEntity<LoanDTO> updateStatus(
             @PathVariable String id,
             @RequestBody UpdateStatusRequest request,
             @AuthenticationPrincipal User user) {
         return ResponseEntity.ok(loanService.updateStatus(id, request.getStatus(), user));
+    }
+
+    @PostMapping("/{id}/alert-borrower")
+    public ResponseEntity<Void> alertBorrower(
+            @PathVariable String id,
+            @AuthenticationPrincipal User user) {
+        loanService.alertBorrower(id, user);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/send-due-reminder")
+    public ResponseEntity<Void> sendDueReminder(
+            @PathVariable String id,
+            @RequestBody SendReminderRequest request,
+            @AuthenticationPrincipal User user) {
+        loanService.sendDueReminder(id, request, user);
+        return ResponseEntity.ok().build();
+    }
+
+    @PostMapping("/{id}/send-overdue-alert")
+    public ResponseEntity<Void> sendOverdueAlert(
+            @PathVariable String id,
+            @AuthenticationPrincipal User user) {
+        loanService.sendOverdueAlert(id, user);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/overdue")

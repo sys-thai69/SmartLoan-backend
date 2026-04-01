@@ -6,8 +6,7 @@ import lombok.Data;
 
 @Data
 public class CreateLoanRequest {
-    @NotBlank(message = "Borrower email is required")
-    @Email(message = "Invalid email format")
+    @NotBlank(message = "Borrower email or phone is required")
     private String borrowerEmail;
 
     @NotNull(message = "Principal amount is required")

@@ -6,12 +6,12 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "loan_templates")
+@Table(name = "notifications")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class LoanTemplate {
+public class Notification {
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -20,28 +20,30 @@ public class LoanTemplate {
     @Column(nullable = false)
     private String userId;
 
-    @Column(nullable = false)
-    private String templateName;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "userId", insertable = false, updatable = false)
+    private User user;
 
     @Column(nullable = false)
-    private Double amount;
+    private String title;
 
-    @Column(nullable = false)
-    @Builder.Default
-    private Double interestRate = 0.0;
+    @Column(nullable = false, length = 1000)
+    private String message;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private LoanFrequency frequency = LoanFrequency.MONTHLY;
+    private NotificationType type = NotificationType.INFO;
+
+    private String loanId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "loanId", insertable = false, updatable = false)
+    private Loan loan;
 
     @Column(nullable = false)
     @Builder.Default
-    private Integer installments = 1;
-
-    @Column(nullable = false)
-    @Builder.Default
-    private Boolean autoDebit = false;
+    private Boolean isRead = false;
 
     @Column(nullable = false)
     @Builder.Default

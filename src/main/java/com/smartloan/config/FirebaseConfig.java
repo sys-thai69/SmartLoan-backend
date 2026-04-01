@@ -76,6 +76,11 @@ public class FirebaseConfig {
 
     @Bean
     public FirebaseAuth firebaseAuth() {
-        return FirebaseAuth.getInstance();
+        // Only return FirebaseAuth if Firebase was successfully initialized
+        if (!FirebaseApp.getApps().isEmpty()) {
+            return FirebaseAuth.getInstance();
+        }
+        // Return null if Firebase is not available (for local JWT testing)
+        return null;
     }
 }

@@ -31,6 +31,10 @@ public class User implements UserDetails {
     @Column(unique = true)
     private String phoneNumber;
 
+    // Profile picture URL (stored as base64 or S3 URL)
+    @Column(columnDefinition = "LONGTEXT")
+    private String profilePicture;
+
     // Firebase UID - links to Firebase Authentication
     @Column(unique = true)
     private String firebaseUid;

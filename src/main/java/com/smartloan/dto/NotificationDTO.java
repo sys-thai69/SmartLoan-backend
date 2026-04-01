@@ -1,6 +1,6 @@
 package com.smartloan.dto;
 
-import com.smartloan.entity.LoanFrequency;
+import com.smartloan.entity.NotificationType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -10,14 +10,13 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class LoanTemplateDTO {
+public class NotificationDTO {
     private String id;
     private String userId;
-    private String templateName;
-    private Double amount;
-    private Double interestRate;
-    private LoanFrequency frequency;
-    private Integer installments;
-    private Boolean autoDebit;
+    private String title;
+    private String message;
+    private NotificationType type;
+    private String loanId;
+    private Boolean isRead;
     private String createdAt;
 }

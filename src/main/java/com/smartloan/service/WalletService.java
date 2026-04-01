@@ -148,4 +148,50 @@ public class WalletService {
                 .createdAt(tx.getCreatedAt().toString())
                 .build();
     }
+
+    @Transactional
+    public void deductFromWallet(String userId, Double amount, String note, String loanId) {
+        Wallet wallet = walletRepository.findByUserId(userId)
+                .orElseThrow(() -> new RuntimeException("Wallet not found"));
+
+        if (wallet.getBalance() < amount) {
+            throw new RuntimeException("Insufficient wallet balance. Required: $" + amount + ", Available: $" + wallet.getBalance());
+        }
+
+        wallet.setBalance(wallet.getBalance() - amount);
+        wallet.setUpdatedAt(LocalDateTime.now());
+        walletRepository.save(wallet);
+
+        // Create transaction record - REFUND type for internal deductions (returns money to system/reserve)
+        WalletTransaction transaction = WalletTransaction.builder()
+                .fromUser(userId)
+                .toUser(null)
+                .amount(amount)
+                .type(TransactionType.REFUND)
+                .loanId(loanId)
+                .note(note)
+                .build();
+        transactionRepository.save(transaction);
+    }
+
+    @Transactional
+    public void creditToWallet(String userId, Double amount, String note, String loanId) {
+        Wallet wallet = walletRepository.findByUserId(userId)
+                .orElseThrow(() -> new RuntimeException("Wallet not found"));
+
+        wallet.setBalance(wallet.getBalance() + amount);
+        wallet.setUpdatedAt(LocalDateTime.now());
+        walletRepository.save(wallet);
+
+        // Create transaction record
+        WalletTransaction transaction = WalletTransaction.builder()
+                .toUser(userId)
+                .fromUser(null)
+                .amount(amount)
+                .type(TransactionType.TOPUP)
+                .loanId(loanId)
+                .note(note)
+                .build();
+        transactionRepository.save(transaction);
+    }
 }

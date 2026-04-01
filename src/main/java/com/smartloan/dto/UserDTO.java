@@ -15,6 +15,7 @@ public class UserDTO {
     private String name;
     private String email;
     private String phoneNumber;
+    private String profilePicture;
     private UserRole role;
     private Double trustScore;
     private Boolean emailVerified;

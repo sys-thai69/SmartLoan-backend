@@ -25,11 +25,13 @@ public class LoanService {
     private final PaymentRepository paymentRepository;
     private final LoanTemplateRepository templateRepository;
     private final AuthService authService;
+    private final WalletService walletService;
+    private final NotificationService notificationService;
+    private final UserService userService;
 
     @Transactional
     public LoanDTO createLoan(CreateLoanRequest request, User lender) {
-        User borrower = userRepository.findByEmail(request.getBorrowerEmail())
-                .orElseThrow(() -> new RuntimeException("Borrower not found with email: " + request.getBorrowerEmail()));
+        User borrower = userService.findUserByFlexibleInput(request.getBorrowerEmail());
 
         if (borrower.getId().equals(lender.getId())) {
             throw new RuntimeException("Cannot lend to yourself");
@@ -37,6 +39,9 @@ public class LoanService {
 
         double interestRate = request.getInterestRate() != null ? request.getInterestRate() : 0.0;
         double totalAmount = request.getPrincipal() * (1 + interestRate / 100);
+
+        // Deduct principal from lender's wallet immediately (only the principal, not total with interest)
+        walletService.deductFromWallet(lender.getId(), request.getPrincipal(), "Loan issued - Principal reserved", null);
 
         Loan loan = Loan.builder()
                 .lenderId(lender.getId())
@@ -56,13 +61,21 @@ public class LoanService {
         // Create repayment schedule
         createRepaymentSchedule(loan);
 
+        // Notify borrower about new loan request
+        notificationService.createNotification(
+                borrower.getId(),
+                "New Loan Request",
+                "You have received a new loan request from " + lender.getName() + " for $" + request.getPrincipal(),
+                NotificationType.LOAN_REQUEST,
+                loan.getId()
+        );
+
         return toLoanDTO(loanRepository.findByIdWithUsers(loan.getId()).orElse(loan));
     }
 
     @Transactional
     public LoanDTO quickLend(QuickLendRequest request, User lender) {
-        User borrower = userRepository.findByEmail(request.getBorrowerEmail())
-                .orElseThrow(() -> new RuntimeException("Borrower not found with email: " + request.getBorrowerEmail()));
+        User borrower = userService.findUserByFlexibleInput(request.getBorrowerEmail());
 
         if (borrower.getId().equals(lender.getId())) {
             throw new RuntimeException("Cannot lend to yourself");
@@ -85,6 +98,9 @@ public class LoanService {
 
         double totalAmount = request.getAmount() * (1 + interestRate / 100);
 
+        // Deduct amount from lender's wallet immediately
+        walletService.deductFromWallet(lender.getId(), request.getAmount(), "Quick loan issued - Principal reserved", null);
+
         Loan loan = Loan.builder()
                 .lenderId(lender.getId())
                 .borrowerId(borrower.getId())
@@ -103,6 +119,15 @@ public class LoanService {
 
         // Create repayment schedule
         createRepaymentSchedule(loan);
+
+        // Notify borrower about new quick loan
+        notificationService.createNotification(
+                borrower.getId(),
+                "New Quick Loan",
+                "You have received a quick loan from " + lender.getName() + " for $" + request.getAmount(),
+                NotificationType.LOAN_REQUEST,
+                loan.getId()
+        );
 
         return toLoanDTO(loanRepository.findByIdWithUsers(loan.getId()).orElse(loan));
     }
@@ -220,7 +245,21 @@ public class LoanService {
         }
 
         loan.setStatus(LoanStatus.ACTIVE);
-        return toLoanDTO(loanRepository.save(loan));
+        loan = loanRepository.save(loan);
+
+        // Credit the principal to borrower's wallet
+        walletService.creditToWallet(user.getId(), loan.getPrincipal(), "Loan received - " + loan.getPrincipal(), loan.getId());
+
+        // Send notification to lender
+        notificationService.createNotification(
+                loan.getLenderId(),
+                "Loan Accepted",
+                "Your loan of $" + loan.getPrincipal() + " to " + user.getName() + " has been accepted.",
+                NotificationType.LOAN_ACCEPTED,
+                loan.getId()
+        );
+
+        return toLoanDTO(loan);
     }
 
     @Transactional
@@ -234,6 +273,33 @@ public class LoanService {
 
         if (loan.getStatus() != LoanStatus.PENDING_ACCEPTANCE) {
             throw new RuntimeException("Loan is not pending acceptance");
+        }
+
+        loan.setStatus(LoanStatus.DECLINED);
+        loan = loanRepository.save(loan);
+
+        // Send notification to lender
+        notificationService.createNotification(
+                loan.getLenderId(),
+                "Loan Declined",
+                "Your loan of $" + loan.getPrincipal() + " to " + user.getName() + " has been declined.",
+                NotificationType.LOAN_DECLINED,
+                loan.getId()
+        );
+
+        return toLoanDTO(loan);
+    }
+
+    public LoanDTO cancelLoan(String id, User user) {
+        Loan loan = loanRepository.findByIdWithUsers(id)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        if (!loan.getLenderId().equals(user.getId())) {
+            throw new RuntimeException("Only the lender can cancel this loan");
+        }
+
+        if (loan.getStatus() != LoanStatus.PENDING_ACCEPTANCE) {
+            throw new RuntimeException("Loan can only be cancelled while pending acceptance");
         }
 
         loan.setStatus(LoanStatus.DECLINED);
@@ -259,6 +325,87 @@ public class LoanService {
                 .stream()
                 .map(this::toScheduleDTO)
                 .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public void alertBorrower(String id, User user) {
+        Loan loan = loanRepository.findByIdWithUsers(id)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Only lender can alert borrower
+        if (!loan.getLenderId().equals(user.getId())) {
+            throw new RuntimeException("Only the lender can alert the borrower about this loan");
+        }
+
+        // Send notification to borrower
+        notificationService.createNotification(
+                loan.getBorrowerId(),
+                "Overdue Payment Alert",
+                "Your payment on loan from " + user.getName() + " is overdue. Please make payment immediately.",
+                NotificationType.OVERDUE_ALERT,
+                loan.getId()
+        );
+    }
+
+    @Transactional
+    public void sendDueReminder(String id, SendReminderRequest request, User user) {
+        Loan loan = loanRepository.findByIdWithUsers(id)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Only lender can send reminder
+        if (!loan.getLenderId().equals(user.getId())) {
+            throw new RuntimeException("Only the lender can send reminders");
+        }
+
+        if (request.getScheduleId() != null) {
+            RepaymentSchedule schedule = scheduleRepository.findById(request.getScheduleId())
+                    .orElseThrow(() -> new RuntimeException("Schedule not found"));
+
+            notificationService.sendDueReminderNotification(
+                    loan.getBorrowerId(),
+                    user.getName(),
+                    loan.getId(),
+                    schedule.getAmountDue(),
+                    schedule.getDueDate().toString()
+            );
+        }
+    }
+
+    @Transactional
+    public void sendOverdueAlert(String id, User user) {
+        Loan loan = loanRepository.findByIdWithUsers(id)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Only lender can send alert
+        if (!loan.getLenderId().equals(user.getId())) {
+            throw new RuntimeException("Only the lender can send overdue alerts");
+        }
+
+        // Find first unpaid schedule
+        List<RepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNo(id);
+        for (RepaymentSchedule schedule : schedules) {
+            if (!schedule.getIsPaid() && schedule.getDueDate().isBefore(LocalDate.now())) {
+                long daysOverdue = java.time.temporal.ChronoUnit.DAYS.between(schedule.getDueDate(), LocalDate.now());
+
+                notificationService.sendOverdueNotification(
+                        loan.getBorrowerId(),
+                        user.getName(),
+                        loan.getId(),
+                        schedule.getAmountDue(),
+                        (int) daysOverdue
+                );
+
+                // Also notify lender
+                notificationService.sendLenderOverdueNotification(
+                        user.getId(),
+                        loan.getBorrower().getName(),
+                        loan.getId(),
+                        schedule.getAmountDue(),
+                        (int) daysOverdue
+                );
+                break;
+            }
+        }
     }
 
     public LoanDTO toLoanDTO(Loan loan) {

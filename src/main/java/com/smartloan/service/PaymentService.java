@@ -21,6 +21,7 @@ public class PaymentService {
     private final RepaymentScheduleRepository scheduleRepository;
     private final WalletService walletService;
     private final UserRepository userRepository;
+    private final NotificationService notificationService;
 
     @Transactional
     public PaymentDTO logPayment(String loanId, LogPaymentRequest request, User user) {
@@ -169,6 +170,15 @@ public class PaymentService {
             loanRepository.save(loan);
         }
 
+        // Send notification to lender
+        notificationService.createNotification(
+                loan.getLenderId(),
+                "Payment Received",
+                user.getName() + " paid $" + request.getAmount() + " on your loan.",
+                NotificationType.PAYMENT_RECEIVED,
+                loanId
+        );
+
         return toPaymentDTO(payment);
     }
 
@@ -224,6 +234,15 @@ public class PaymentService {
             loan.setStatus(LoanStatus.COMPLETED);
             loanRepository.save(loan);
         }
+
+        // Send notification to borrower
+        notificationService.createNotification(
+                borrower.getId(),
+                "Auto-Debit Payment",
+                user.getName() + " initiated an auto-debit of $" + request.getAmount() + " on your loan.",
+                NotificationType.PAYMENT_RECEIVED,
+                loanId
+        );
 
         return toPaymentDTO(payment);
     }

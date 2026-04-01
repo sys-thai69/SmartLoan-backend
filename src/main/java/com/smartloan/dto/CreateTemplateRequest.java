@@ -11,6 +11,10 @@ public class CreateTemplateRequest {
     @NotBlank(message = "Template name is required")
     private String templateName;
 
+    @NotNull(message = "Amount is required")
+    @Min(value = 0, message = "Amount must be at least 0")
+    private Double amount;
+
     @Min(value = 0, message = "Interest rate cannot be negative")
     private Double interestRate = 0.0;
 
