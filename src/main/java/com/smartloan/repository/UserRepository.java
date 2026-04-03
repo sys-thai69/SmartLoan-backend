@@ -1,6 +1,7 @@
 package com.smartloan.repository;
 
 import com.smartloan.entity.User;
+import com.smartloan.entity.UserRole;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -14,6 +15,7 @@ public interface UserRepository extends JpaRepository<User, String> {
     Optional<User> findByFirebaseUid(String firebaseUid);
     boolean existsByEmail(String email);
     boolean existsByPhoneNumber(String phoneNumber);
+    boolean existsByRole(UserRole role);
 
     @Query("SELECT u FROM User u WHERE LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(u.name) LIKE LOWER(CONCAT('%', :query, '%'))")
     List<User> searchByEmailOrName(String query);

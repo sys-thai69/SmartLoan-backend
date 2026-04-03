@@ -8,7 +8,8 @@ public enum LoanStatus {
     ACTIVE("active"),
     OVERDUE("overdue"),
     COMPLETED("completed"),
-    DECLINED("declined");
+    DECLINED("declined"),
+    CANCELLED("cancelled");
 
     private final String value;
 

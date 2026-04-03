@@ -16,4 +16,7 @@ public class PlatformStatsDTO {
     private Long overdueLoans;
     private Double totalVolume;
     private Long completedLoans;
+    private Long flaggedLoans;
+    private Double platformRevenue;
+    private Long totalFeeTransactions;
 }

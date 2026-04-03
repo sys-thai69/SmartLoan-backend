@@ -30,6 +30,10 @@ public class LoanDTO {
     private Boolean isQuickLend;
     private String templateId;
     private String createdAt;
+    private Boolean flagged;
+    private String flagReason;
+    private String flaggedBy;
+    private String flaggedAt;
     private List<RepaymentScheduleDTO> schedule;
     private List<PaymentDTO> payments;
 }

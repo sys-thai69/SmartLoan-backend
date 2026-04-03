@@ -7,7 +7,7 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -23,7 +23,14 @@ public class JwtUtil {
     private Long expiration;
 
     private SecretKey getSigningKey() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
+        // Decode base64-encoded secret, or use raw bytes if not base64
+        byte[] keyBytes;
+        try {
+            keyBytes = Base64.getDecoder().decode(secret);
+        } catch (IllegalArgumentException e) {
+            // Not base64 encoded, use raw bytes
+            keyBytes = secret.getBytes();
+        }
         return Keys.hmacShaKeyFor(keyBytes);
     }
 

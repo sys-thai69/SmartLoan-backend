@@ -40,4 +40,19 @@ public interface LoanRepository extends JpaRepository<Loan, String> {
            "FROM User u LEFT JOIN Loan l ON l.lenderId = u.id OR l.borrowerId = u.id " +
            "GROUP BY u.id")
     List<Object[]> getUserLoanStats();
+
+    // Admin: all loans with user details
+    @Query("SELECT l FROM Loan l LEFT JOIN FETCH l.lender LEFT JOIN FETCH l.borrower ORDER BY l.createdAt DESC")
+    List<Loan> findAllWithUsers();
+
+    // Admin: count flagged loans
+    long countByFlaggedTrue();
+
+    // Admin: user detail - loans as lender
+    @Query("SELECT l FROM Loan l LEFT JOIN FETCH l.lender LEFT JOIN FETCH l.borrower WHERE l.lenderId = :userId ORDER BY l.createdAt DESC")
+    List<Loan> findByLenderIdWithUsers(@Param("userId") String userId);
+
+    // Admin: user detail - loans as borrower
+    @Query("SELECT l FROM Loan l LEFT JOIN FETCH l.lender LEFT JOIN FETCH l.borrower WHERE l.borrowerId = :userId ORDER BY l.createdAt DESC")
+    List<Loan> findByBorrowerIdWithUsers(@Param("userId") String userId);
 }

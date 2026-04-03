@@ -61,6 +61,11 @@ public class WalletService {
             throw new RuntimeException("Insufficient balance");
         }
 
+        // Guard: cannot transfer to yourself
+        if (user.getId().equals(request.getToUserId())) {
+            throw new RuntimeException("Cannot transfer money to yourself");
+        }
+
         User recipient = userRepository.findById(request.getToUserId())
                 .orElseThrow(() -> new RuntimeException("Recipient not found"));
 
@@ -162,12 +167,12 @@ public class WalletService {
         wallet.setUpdatedAt(LocalDateTime.now());
         walletRepository.save(wallet);
 
-        // Create transaction record - REFUND type for internal deductions (returns money to system/reserve)
+        // Create transaction record - RESERVED for pending loans
         WalletTransaction transaction = WalletTransaction.builder()
                 .fromUser(userId)
                 .toUser(null)
                 .amount(amount)
-                .type(TransactionType.REFUND)
+                .type(TransactionType.RESERVED)
                 .loanId(loanId)
                 .note(note)
                 .build();
@@ -183,12 +188,37 @@ public class WalletService {
         wallet.setUpdatedAt(LocalDateTime.now());
         walletRepository.save(wallet);
 
+        // Determine transaction type based on note
+        TransactionType type = note.contains("refunded") ? TransactionType.REFUND : TransactionType.TOPUP;
+
         // Create transaction record
         WalletTransaction transaction = WalletTransaction.builder()
                 .toUser(userId)
                 .fromUser(null)
                 .amount(amount)
-                .type(TransactionType.TOPUP)
+                .type(type)
+                .loanId(loanId)
+                .note(note)
+                .build();
+        transactionRepository.save(transaction);
+    }
+
+    @Transactional
+    public void acceptLoanTransfer(String lenderId, String borrowerId, String loanId, Double amount, String note) {
+        Wallet borrowerWallet = walletRepository.findByUserId(borrowerId)
+                .orElseThrow(() -> new RuntimeException("Borrower wallet not found"));
+
+        // Credit the borrower with the principal
+        borrowerWallet.setBalance(borrowerWallet.getBalance() + amount);
+        borrowerWallet.setUpdatedAt(LocalDateTime.now());
+        walletRepository.save(borrowerWallet);
+
+        // Create transaction record showing transfer from lender to borrower
+        WalletTransaction transaction = WalletTransaction.builder()
+                .fromUser(lenderId)
+                .toUser(borrowerId)
+                .amount(amount)
+                .type(TransactionType.TRANSFER)
                 .loanId(loanId)
                 .note(note)
                 .build();

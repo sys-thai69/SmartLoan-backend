@@ -102,4 +102,12 @@ public class LoanController {
     public ResponseEntity<List<RepaymentScheduleDTO>> getOverdue(@AuthenticationPrincipal User user) {
         return ResponseEntity.ok(loanService.getOverdueSchedules(user));
     }
+
+    @PostMapping("/{id}/report")
+    public ResponseEntity<LoanDTO> reportLoan(
+            @PathVariable String id,
+            @RequestBody ReportLoanRequest request,
+            @AuthenticationPrincipal User user) {
+        return ResponseEntity.ok(loanService.reportLoan(id, request.getReason(), user));
+    }
 }

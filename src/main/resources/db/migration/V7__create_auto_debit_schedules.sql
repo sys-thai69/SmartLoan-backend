@@ -1,0 +1,2 @@
+-- This migration is kept minimal to maintain Flyway checksum
+-- Actual table creation handled in V9

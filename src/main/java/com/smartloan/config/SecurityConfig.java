@@ -43,8 +43,11 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.GET, "/api/health").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/send-otp").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/verify-otp").permitAll()
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // Admin endpoints
+                .requestMatchers(HttpMethod.POST, "/api/admin/bootstrap").authenticated()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 // All other API endpoints require authentication via JWT
                 .anyRequest().authenticated()

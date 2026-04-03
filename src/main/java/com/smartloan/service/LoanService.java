@@ -19,6 +19,9 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class LoanService {
 
+    // Minimum trust score required to receive loans
+    private static final double MIN_TRUST_SCORE = 50.0;
+
     private final LoanRepository loanRepository;
     private final UserRepository userRepository;
     private final RepaymentScheduleRepository scheduleRepository;
@@ -35,6 +38,14 @@ public class LoanService {
 
         if (borrower.getId().equals(lender.getId())) {
             throw new RuntimeException("Cannot lend to yourself");
+        }
+
+        // Trust score enforcement — reject borrowers with low trust
+        if (borrower.getTrustScore() < MIN_TRUST_SCORE) {
+            throw new RuntimeException(
+                    "Cannot create loan: " + borrower.getName() + " has a trust score of " +
+                    borrower.getTrustScore().intValue() + " (minimum required: " + (int) MIN_TRUST_SCORE + "). " +
+                    "They need to improve their trust score by repaying existing loans on time.");
         }
 
         double interestRate = request.getInterestRate() != null ? request.getInterestRate() : 0.0;
@@ -79,6 +90,14 @@ public class LoanService {
 
         if (borrower.getId().equals(lender.getId())) {
             throw new RuntimeException("Cannot lend to yourself");
+        }
+
+        // Trust score enforcement — reject borrowers with low trust
+        if (borrower.getTrustScore() < MIN_TRUST_SCORE) {
+            throw new RuntimeException(
+                    "Cannot create loan: " + borrower.getName() + " has a trust score of " +
+                    borrower.getTrustScore().intValue() + " (minimum required: " + (int) MIN_TRUST_SCORE + "). " +
+                    "They need to improve their trust score by repaying existing loans on time.");
         }
 
         // Default values or from template
@@ -201,6 +220,10 @@ public class LoanService {
                 .isQuickLend(loan.getIsQuickLend())
                 .templateId(loan.getTemplateId())
                 .createdAt(loan.getCreatedAt().toString())
+                .flagged(loan.getFlagged())
+                .flagReason(loan.getFlagReason())
+                .flaggedBy(loan.getFlaggedBy())
+                .flaggedAt(loan.getFlaggedAt() != null ? loan.getFlaggedAt().toString() : null)
                 .schedule(schedules.stream().map(this::toScheduleDTO).collect(Collectors.toList()))
                 .payments(payments.stream().map(this::toPaymentDTO).collect(Collectors.toList()))
                 .build();
@@ -247,8 +270,8 @@ public class LoanService {
         loan.setStatus(LoanStatus.ACTIVE);
         loan = loanRepository.save(loan);
 
-        // Credit the principal to borrower's wallet
-        walletService.creditToWallet(user.getId(), loan.getPrincipal(), "Loan received - " + loan.getPrincipal(), loan.getId());
+        // Transfer principal from lender to borrower (TRANSFER type transaction)
+        walletService.acceptLoanTransfer(loan.getLenderId(), user.getId(), loan.getId(), loan.getPrincipal(), "Loan received - Principal transferred");
 
         // Send notification to lender
         notificationService.createNotification(
@@ -278,11 +301,14 @@ public class LoanService {
         loan.setStatus(LoanStatus.DECLINED);
         loan = loanRepository.save(loan);
 
+        // Refund the principal back to lender's wallet
+        walletService.creditToWallet(loan.getLenderId(), loan.getPrincipal(), "Loan declined - Principal refunded", loan.getId());
+
         // Send notification to lender
         notificationService.createNotification(
                 loan.getLenderId(),
                 "Loan Declined",
-                "Your loan of $" + loan.getPrincipal() + " to " + user.getName() + " has been declined.",
+                "Your loan of $" + loan.getPrincipal() + " to " + user.getName() + " has been declined. Principal has been refunded.",
                 NotificationType.LOAN_DECLINED,
                 loan.getId()
         );
@@ -290,6 +316,7 @@ public class LoanService {
         return toLoanDTO(loan);
     }
 
+    @Transactional
     public LoanDTO cancelLoan(String id, User user) {
         Loan loan = loanRepository.findByIdWithUsers(id)
                 .orElseThrow(() -> new RuntimeException("Loan not found"));
@@ -302,8 +329,22 @@ public class LoanService {
             throw new RuntimeException("Loan can only be cancelled while pending acceptance");
         }
 
-        loan.setStatus(LoanStatus.DECLINED);
-        return toLoanDTO(loanRepository.save(loan));
+        loan.setStatus(LoanStatus.CANCELLED);
+        loan = loanRepository.save(loan);
+
+        // Refund the principal back to lender's wallet
+        walletService.creditToWallet(loan.getLenderId(), loan.getPrincipal(), "Loan cancelled - Principal refunded", loan.getId());
+
+        // Notify borrower the loan was cancelled
+        notificationService.createNotification(
+                loan.getBorrowerId(),
+                "Loan Request Cancelled",
+                "The lending request from " + user.getName() + " has been cancelled. No action needed.",
+                NotificationType.LOAN_DECLINED,
+                loan.getId()
+        );
+
+        return toLoanDTO(loan);
     }
 
     @Transactional
@@ -316,7 +357,26 @@ public class LoanService {
             throw new RuntimeException("Access denied");
         }
 
-        loan.setStatus(LoanStatus.valueOf(newStatus.toUpperCase()));
+        LoanStatus targetStatus;
+        try {
+            targetStatus = LoanStatus.valueOf(newStatus.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException("Invalid loan status: " + newStatus);
+        }
+
+        // Validate allowed status transitions
+        LoanStatus currentStatus = loan.getStatus();
+        boolean validTransition = switch (currentStatus) {
+            case ACTIVE -> targetStatus == LoanStatus.OVERDUE || targetStatus == LoanStatus.COMPLETED;
+            case OVERDUE -> targetStatus == LoanStatus.ACTIVE || targetStatus == LoanStatus.COMPLETED;
+            default -> false;
+        };
+
+        if (!validTransition) {
+            throw new RuntimeException("Cannot transition from " + currentStatus + " to " + targetStatus);
+        }
+
+        loan.setStatus(targetStatus);
         return toLoanDTO(loanRepository.save(loan));
     }
 
@@ -357,18 +417,44 @@ public class LoanService {
             throw new RuntimeException("Only the lender can send reminders");
         }
 
-        if (request.getScheduleId() != null) {
-            RepaymentSchedule schedule = scheduleRepository.findById(request.getScheduleId())
-                    .orElseThrow(() -> new RuntimeException("Schedule not found"));
-
-            notificationService.sendDueReminderNotification(
-                    loan.getBorrowerId(),
-                    user.getName(),
-                    loan.getId(),
-                    schedule.getAmountDue(),
-                    schedule.getDueDate().toString()
-            );
+        if (request.getScheduleId() == null) {
+            throw new RuntimeException("A schedule ID is required to send a due reminder");
         }
+
+        RepaymentSchedule schedule = scheduleRepository.findById(request.getScheduleId())
+                .orElseThrow(() -> new RuntimeException("Schedule not found"));
+
+        // Verify this schedule belongs to this loan
+        if (!schedule.getLoanId().equals(id)) {
+            throw new RuntimeException("Schedule does not belong to this loan");
+        }
+
+        notificationService.sendDueReminderNotification(
+                loan.getBorrowerId(),
+                user.getName(),
+                loan.getId(),
+                schedule.getAmountDue(),
+                schedule.getDueDate().toString()
+        );
+    }
+
+    @Transactional
+    public LoanDTO reportLoan(String id, String reason, User user) {
+        Loan loan = loanRepository.findByIdWithUsers(id)
+                .orElseThrow(() -> new RuntimeException("Loan not found"));
+
+        // Only lender or borrower can report
+        if (!loan.getLenderId().equals(user.getId()) && !loan.getBorrowerId().equals(user.getId())) {
+            throw new RuntimeException("Only the lender or borrower can report this loan");
+        }
+
+        loan.setFlagged(true);
+        loan.setFlagReason(reason);
+        loan.setFlaggedBy(user.getId());
+        loan.setFlaggedAt(LocalDateTime.now());
+        loan = loanRepository.save(loan);
+
+        return toLoanDTO(loan);
     }
 
     @Transactional
@@ -381,8 +467,9 @@ public class LoanService {
             throw new RuntimeException("Only the lender can send overdue alerts");
         }
 
-        // Find first unpaid schedule
+        // Find ALL unpaid overdue schedules and send a consolidated alert
         List<RepaymentSchedule> schedules = scheduleRepository.findByLoanIdOrderByInstallmentNo(id);
+        boolean anyAlertSent = false;
         for (RepaymentSchedule schedule : schedules) {
             if (!schedule.getIsPaid() && schedule.getDueDate().isBefore(LocalDate.now())) {
                 long daysOverdue = java.time.temporal.ChronoUnit.DAYS.between(schedule.getDueDate(), LocalDate.now());
@@ -394,17 +481,21 @@ public class LoanService {
                         schedule.getAmountDue(),
                         (int) daysOverdue
                 );
-
-                // Also notify lender
-                notificationService.sendLenderOverdueNotification(
-                        user.getId(),
-                        loan.getBorrower().getName(),
-                        loan.getId(),
-                        schedule.getAmountDue(),
-                        (int) daysOverdue
-                );
-                break;
+                anyAlertSent = true;
             }
+        }
+
+        // Notify lender only once with a summary
+        if (anyAlertSent) {
+            notificationService.sendLenderOverdueNotification(
+                    user.getId(),
+                    loan.getBorrower().getName(),
+                    loan.getId(),
+                    schedules.stream()
+                        .filter(s -> !s.getIsPaid() && s.getDueDate().isBefore(LocalDate.now()))
+                        .mapToDouble(RepaymentSchedule::getAmountDue).sum(),
+                    0 // summary notification; days not meaningful for multi-schedule
+            );
         }
     }
 
@@ -436,6 +527,10 @@ public class LoanService {
                 .isQuickLend(loan.getIsQuickLend())
                 .templateId(loan.getTemplateId())
                 .createdAt(loan.getCreatedAt().toString())
+                .flagged(loan.getFlagged())
+                .flagReason(loan.getFlagReason())
+                .flaggedBy(loan.getFlaggedBy())
+                .flaggedAt(loan.getFlaggedAt() != null ? loan.getFlaggedAt().toString() : null)
                 .schedule(schedules)
                 .payments(payments)
                 .build();

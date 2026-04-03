@@ -73,6 +73,16 @@ public class Loan {
 
     @Column(nullable = false)
     @Builder.Default
+    private Boolean flagged = false;
+
+    private String flagReason;
+
+    private String flaggedBy;
+
+    private LocalDateTime flaggedAt;
+
+    @Column(nullable = false)
+    @Builder.Default
     private LocalDateTime createdAt = LocalDateTime.now();
 
     @OneToMany(mappedBy = "loan", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

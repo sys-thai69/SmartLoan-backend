@@ -4,6 +4,7 @@ import com.smartloan.dto.*;
 import com.smartloan.entity.*;
 import com.smartloan.repository.*;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,7 +15,12 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentService {
+
+    // Platform fee configuration
+    private static final double FEE_THRESHOLD = 500.0;
+    private static final double FEE_RATE = 0.015; // 1.5%
 
     private final PaymentRepository paymentRepository;
     private final LoanRepository loanRepository;
@@ -22,6 +28,7 @@ public class PaymentService {
     private final WalletService walletService;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final PlatformFeeRepository platformFeeRepository;
 
     @Transactional
     public PaymentDTO logPayment(String loanId, LogPaymentRequest request, User user) {
@@ -58,12 +65,9 @@ public class PaymentService {
             }
         }
 
-        // Check if loan is fully paid
-        Double totalPaid = paymentRepository.getTotalPaidForLoan(loanId);
-        if (totalPaid != null && totalPaid >= loan.getTotalAmount()) {
-            loan.setStatus(LoanStatus.COMPLETED);
-            loanRepository.save(loan);
-        }
+        // Note: Manually logging an offline payment does NOT automatically
+        // complete the loan. Only valid wallet transactions (makePayment, autoDebit)
+        // are allowed to transition the loan to COMPLETED status to prevent exploitation.
 
         return toPaymentDTO(payment);
     }
@@ -136,10 +140,22 @@ public class PaymentService {
             throw new RuntimeException("Payment amount must be greater than 0");
         }
 
-        // Transfer from borrower wallet to lender wallet
+        // Calculate platform fee for transactions above threshold
+        double platformFee = 0.0;
+        if (request.getAmount() > FEE_THRESHOLD) {
+            platformFee = Math.round(request.getAmount() * FEE_RATE * 100.0) / 100.0;
+            log.info("Platform fee of ${} applied to payment of ${} on loan {}", platformFee, request.getAmount(), loanId);
+        }
+
+        // Transfer full amount from borrower to lender
         walletService.payLoan(user.getId(), loan.getLenderId(), loanId, request.getAmount());
 
-        // Create payment record
+        // Deduct fee from lender's wallet
+        if (platformFee > 0) {
+            walletService.deductFromWallet(loan.getLenderId(), platformFee, "Platform fee for loan payment", loanId);
+        }
+
+        // Create payment record (full amount paid by borrower)
         LocalDate paymentDate = LocalDate.now();
         Payment payment = Payment.builder()
                 .loanId(loanId)
@@ -153,10 +169,24 @@ public class PaymentService {
 
         payment = paymentRepository.save(payment);
 
-        // Mark schedule as paid if linked
+        // Record platform fee if applicable
+        if (platformFee > 0) {
+            PlatformFee fee = PlatformFee.builder()
+                    .loanId(loanId)
+                    .paymentId(payment.getId())
+                    .transactionAmount(request.getAmount())
+                    .feeRate(FEE_RATE)
+                    .feeAmount(platformFee)
+                    .payerId(loan.getLenderId())
+                    .recipientId(null)
+                    .build();
+            platformFeeRepository.save(fee);
+        }
+
+        // Mark schedule as paid if linked and belongs to this loan
         if (request.getScheduleId() != null) {
             RepaymentSchedule schedule = scheduleRepository.findById(request.getScheduleId()).orElse(null);
-            if (schedule != null) {
+            if (schedule != null && schedule.getLoanId().equals(loanId)) {
                 schedule.setIsPaid(true);
                 schedule.setPaidAt(LocalDateTime.now());
                 scheduleRepository.save(schedule);
@@ -171,10 +201,13 @@ public class PaymentService {
         }
 
         // Send notification to lender
+        String feeNotice = platformFee > 0
+                ? String.format(" (Platform fee: $%.2f charged to your wallet)", platformFee)
+                : "";
         notificationService.createNotification(
                 loan.getLenderId(),
                 "Payment Received",
-                user.getName() + " paid $" + request.getAmount() + " on your loan.",
+                user.getName() + " paid $" + request.getAmount() + " on your loan." + feeNotice,
                 NotificationType.PAYMENT_RECEIVED,
                 loanId
         );
@@ -201,8 +234,20 @@ public class PaymentService {
         User borrower = userRepository.findById(loan.getBorrowerId())
                 .orElseThrow(() -> new RuntimeException("Borrower not found"));
 
-        // Transfer from borrower wallet to lender wallet
+        // Calculate platform fee for transactions above threshold
+        double platformFee = 0.0;
+        if (request.getAmount() > FEE_THRESHOLD) {
+            platformFee = Math.round(request.getAmount() * FEE_RATE * 100.0) / 100.0;
+            log.info("Platform fee of ${} applied to auto-debit of ${} on loan {}", platformFee, request.getAmount(), loanId);
+        }
+
+        // Transfer full amount from borrower to lender
         walletService.payLoan(borrower.getId(), user.getId(), loanId, request.getAmount());
+
+        // Deduct fee from lender's wallet
+        if (platformFee > 0) {
+            walletService.deductFromWallet(user.getId(), platformFee, "Platform fee for auto-debit payment", loanId);
+        }
 
         // Create payment record
         LocalDate paymentDate = LocalDate.now();
@@ -218,10 +263,24 @@ public class PaymentService {
 
         payment = paymentRepository.save(payment);
 
-        // Mark schedule as paid if linked
+        // Record platform fee if applicable
+        if (platformFee > 0) {
+            PlatformFee fee = PlatformFee.builder()
+                    .loanId(loanId)
+                    .paymentId(payment.getId())
+                    .transactionAmount(request.getAmount())
+                    .feeRate(FEE_RATE)
+                    .feeAmount(platformFee)
+                    .payerId(user.getId())
+                    .recipientId(null)
+                    .build();
+            platformFeeRepository.save(fee);
+        }
+
+        // Mark schedule as paid if linked and belongs to this loan
         if (request.getScheduleId() != null) {
             RepaymentSchedule schedule = scheduleRepository.findById(request.getScheduleId()).orElse(null);
-            if (schedule != null) {
+            if (schedule != null && schedule.getLoanId().equals(loanId)) {
                 schedule.setIsPaid(true);
                 schedule.setPaidAt(LocalDateTime.now());
                 scheduleRepository.save(schedule);
@@ -236,10 +295,13 @@ public class PaymentService {
         }
 
         // Send notification to borrower
+        String feeNotice = platformFee > 0
+                ? String.format(" (Platform fee: $%.2f charged to lender's wallet)", platformFee)
+                : "";
         notificationService.createNotification(
                 borrower.getId(),
                 "Auto-Debit Payment",
-                user.getName() + " initiated an auto-debit of $" + request.getAmount() + " on your loan.",
+                user.getName() + " initiated an auto-debit of $" + request.getAmount() + " on your loan." + feeNotice,
                 NotificationType.PAYMENT_RECEIVED,
                 loanId
         );

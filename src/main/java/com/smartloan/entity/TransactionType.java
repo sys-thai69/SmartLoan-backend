@@ -7,7 +7,8 @@ public enum TransactionType {
     TOPUP("topup"),
     TRANSFER("transfer"),
     AUTO_DEBIT("auto_debit"),
-    REFUND("refund");
+    REFUND("refund"),
+    RESERVED("reserved");
 
     private final String value;
 
