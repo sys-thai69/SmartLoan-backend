@@ -32,7 +32,7 @@ public class User implements UserDetails {
     private String phoneNumber;
 
     // Profile picture URL (stored as base64 or S3 URL)
-    @Column(columnDefinition = "LONGTEXT")
+    @Column(columnDefinition = "TEXT")
     private String profilePicture;
 
     // Firebase UID - links to Firebase Authentication
